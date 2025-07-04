@@ -1,0 +1,89 @@
+1. branch_id 임베딩이란?
+**임베딩(embedding)**은 “지점 번호” 같은 범주형 정보를 여러 개의 숫자(벡터)로 바꿔주는 과정입니다.
+예를 들어, 3개의 지점이 있고 임베딩 차원이 2라면,
+각 지점은 아래처럼 2개의 숫자로 표현됩니다.
+지점(branch_id)	임베딩 벡터 (예시)
+0 (서울)	[0.8, -0.3]
+1 (부산)	[-1.2, 0.5]
+2 (대구)	[0.1, 1.7]
+이 숫자들은 학습 과정에서 자동으로 정해집니다.
+1. branch_id 임베딩이란?
+단순히 “지점 번호”만 넣으면, 컴퓨터는 “순서”로만 이해합니다.
+(예: 0, 1, 2는 그냥 숫자일 뿐, 지점의 특성을 반영하지 못함)
+임베딩을 쓰면, 각 지점의 “특성”을 숫자 조합으로 표현할 수 있습니다.
+
+
+각 지점의 임베딩 벡터가 모델에 같이 들어갑니다.
+즉,
+서울: [5, 월요일, 100, 0.8, -0.3]
+부산: [5, 월요일, 100, -1.2, 0.5]
+대구: [5, 월요일, 100, 0.1, 1.7]
+
+
+-------------------------------------------------------------------------
+
+__init__생성자를 통해 일단.
+    self.X = torch.tensor(X, dtype=torch.float32)
+    self.y = torch.tensor(y, dtype=torch.float32)
+    self.branch_ids = torch.tensor(branch_ids, dtype=torch.long)
+    self.window_size = window_size
+    self.num_branches = num_branches
+
+X는 입력특성
+y는 열수요
+branch_ids는 그냥 브랜치 id
+window_size는 한번에 모델에 넣을 시계열 구간길이 48시간
+num_brancehs는 지점을 개수로(임베딩 층에 필요하다고 하네요~)
+
+tensor형식으로 일단 선언했지?
+
+
+-----------------------------------------------------------
+def __len__(self):
+    return len(self.X) - self.window_size
+
+는 예를 들어 데이터가 1000개면 window_size가 48이면 952개의 샘플을 앞으로도 더 추가로 만들 수 있다는
+의미임
+
+---------------------------
+__getitem__ (슬라이싱해서 한 샘플 반환)
+
+x_seq = self.X[idx:idx+self.window_size]                      # [T, input_size]                  ->0~47개씩 가져옴
+    y_seq = self.y[idx:idx+self.window_size].unsqueeze(-1)        # [T, 1]		->얘도 y를 47개씩 가져옴
+    target = self.y[idx+self.window_size]                         # scalar			-> 다음 시점의 예측값임
+    branch_id = self.branch_ids[idx+self.window_size]             # scalar		->예측하려는 시점의 지점번호임
+    return x_seq, y_seq, target, branch_id					->return함수임그냥
+
+-----------------------------
+
+class AttentionDeepAR(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, num_branches, embedding_dim=8):
+        super().__init__()
+        self.embedding = nn.Embedding(num_branches, embedding_dim)
+        self.rnn = nn.LSTM(input_size + 1 + embedding_dim, hidden_size, num_layers, batch_first=True)
+        self.attn = nn.Linear(hidden_size, 1)
+        self.fc = nn.Linear(hidden_size, 1)
+
+보면 파이썬 기본 틀이지? 딥러닝 모델관련 class AttentionDeepAR은
+super().__init__() #여러가지 앞에서 정의한 것들을 받아올건데
+self.embedding = nn.Embedding(num_branches, embedding_dim) 지점(branch) 번호를 “지점 특성 벡터(임베딩)”로 바꿔주는 층입니다.
+self.rnn = nn.LSTM(input_size + 1 + embedding_dim, hidden_size, num_layers, batch_first=True) :LSTM을 이용
+self.attn = nn.Linear(hidden_size, 1) :LSTM이 뽑아낸 각 시점별 정보 중 어떤 시점이 중요한지를 판단해 가중치
+self.fc = nn.Linear(hidden_size, 1):마지막으로 예측값(예: 내일 난방 사용량)을 뽑아내는 층
+
+
+---------------------------------------
+실제 데이터가 들어와 예측하는과정
+def forward(self, x, y_hist, branch_ids):
+    batch_size, seq_len, _ = x.size()
+    emb = self.embedding(branch_ids)                          # [B, emb_dim]
+    emb_seq = emb.unsqueeze(1).repeat(1, seq_len, 1)          # [B, T, emb_dim]
+    inp = torch.cat((x, y_hist, emb_seq), dim=2)              # [B, T, input_size+1+emb_dim]
+    out, _ = self.rnn(inp)                                    # [B, T, hidden_size]
+    attn_weights = torch.softmax(self.attn(out), dim=1)       # [B, T, 1]
+    context = (out * attn_weights).sum(dim=1)                 # [B, hidden_size]
+    output = self.fc(context)                                 # [B, 1]
+    return output, attn_weights
+
+
+-------------------------------------------
