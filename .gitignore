@@ -1,0 +1,60 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Data files (large files)
+# data/*.csv
+# Uncomment above if you don't want to track large CSV files
+
+# Model files
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+models/*.pkl
+models/*.h5
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Output files
+output/
+results/
+
+# Optuna
+optuna.db
+*.db
+
+# Cached data
+*.cache
+.cache/
